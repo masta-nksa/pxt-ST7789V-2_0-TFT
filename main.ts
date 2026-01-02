@@ -1,4 +1,4 @@
-//----------------------------------------------------------------------------------------------------
+ //----------------------------------------------------------------------------------------------------
 // Colors RGB556.  I used https://htmlcolorcodes.com/ and Lucas Software to make colors.
 // Link to  Lucas page "thanks Lucas :-)"
 // https://www.lucasgaland.com/24-bit-16-bit-color-converter-tool-for-embedded-lcd-guis/
