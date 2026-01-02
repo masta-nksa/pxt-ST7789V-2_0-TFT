@@ -1,27 +1,21 @@
+
 {
-    "name": "pxt-ST7789V 2.0 TFT",
-    "description": "",
-    "dependencies": {
-        "core": "*",
-        "radio": "*",
-        "microphone": "*",
-        "pxt-ST7789V 2.0 TFT-masta": "github:masta-nksa/pxt-ST7789V-2_0-TFT#master"
-    },
-    "files": [
-        "main.blocks",
-        "main.ts",
-        "README.md"
-    ],
-    "testFiles": [
-        "test.ts"
-    ],
-    "targetVersions": {
-        "target": "5.0.12",
-     
-        "targetId": "microbit"
-    },
-    "supportedTargets": [
-        "microbit"
-    ],
-    "preferredEditor": "tsprj"
+  "name": "pxt-st7789v-2_0-tft-masta",
+  "description": "ST7789V 2.0\" TFT for micro:bit (masta's fork)",
+  "version": "1.0.2",
+  "public": true,
+
+  "files": [
+    "main.ts"
+  ],
+
+  "dependencies": {
+    "core": "*"
+  },
+
+  "supportedTargets": [
+    "microbit"
+  ],
+
+  "preferredEditor": "tsprj"
 }
