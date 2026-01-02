@@ -51,6 +51,9 @@ namespace OLEDST7789 {
     // Display commands & constants
     let TFTWIDTH = 240
     let TFTHEIGHT = 320
+   // Panel-Basis (dein 2.0" ST7789V)
+    let X_OFFSET  = 0
+    let Y_OFFSET  = 0
     let TFTDC = [DigitalPin.P8]// TFT Data/Command pin 8  
     let TFTCS = [DigitalPin.P16]// TFT SPI Chip Select pin 16 
     //---------------------------------------------------------------------------------------------------------------------
@@ -107,12 +110,6 @@ export enum Orientation {
 
 // Aktueller MADCTL-Wert (Default: Portrait, MY=0x80 → y wächst nach unten, RGB)
 let currentMADCTL = 0x80 | ColorOrder.RGB
-
-// Panel-Basis (dein 2.0" ST7789V)
-let TFTWIDTH  = 240
-let TFTHEIGHT = 320
-let X_OFFSET  = 0
-let Y_OFFSET  = 0
 
 function applyOrientation(ori: Orientation, order: ColorOrder) {
     switch (ori) {
@@ -321,44 +318,7 @@ export function initExRGB(
 //% order.defl=ColorOrder.RGB
 //% spiMHz.defl=12
 //% weight=100 group="Setup"
-export function initExRGB(
-    bg: number,
-    ori: Orientation = Orientation.Portrait,
-    order: ColorOrder = ColorOrder.RGB,
-    spiMHz: number = 12
-): void {
-    // moderat starten; später erhöhen (24–40 MHz nur bei kurzen, sauberen Leitungen)
-    setSpiFrequency(spiMHz * 1000000)
 
-    // 1) Software-Reset + Aufwecken (einmal)
-    send(TFTCommands.SWRESET, []); basic.pause(120)
-    send(TFTCommands.SLPOUT,  []); basic.pause(120)
-
-    // 2) 16-bit/pixel (RGB565)
-    send(TFTCommands.COLMOD, [0x05]); basic.pause(10)
-
-    // 3) Ausrichtung / Farbordnung
-    applyOrientation(ori, order)
-
-    // 4) Volle Fläche als Standardfenster
-    send(TFTCommands.CASET, [
-        (X_OFFSET >> 8) & 0xFF, X_OFFSET & 0xFF,
-        ((X_OFFSET + TFTWIDTH - 1) >> 8) & 0xFF, (X_OFFSET + TFTWIDTH - 1) & 0xFF
-    ])
-    send(TFTCommands.RASET, [
-        (Y_OFFSET >> 8) & 0xFF, Y_OFFSET & 0xFF,
-        ((Y_OFFSET + TFTHEIGHT - 1) >> 8) & 0xFF, (Y_OFFSET + TFTHEIGHT - 1) & 0xFF
-    ])
-
-    // 5) (optional) Inversion ON – viele ST7789-Panels sehen damit korrekt aus
-    send(TFTCommands.INVON, []); basic.pause(10)
-
-    // 6) Normal an + Display an
-    send(TFTCommands.NORON, []); basic.pause(10)
-    send(TFTCommands.DISPON, []); basic.pause(10)
-
-    clearScreen(bg)
-}
 
 function setWindow(x: number, y: number, w: number, h: number) {
     // Column
@@ -373,6 +333,14 @@ function setWindow(x: number, y: number, w: number, h: number) {
     ])
     // Datenphase starten
    send(TFTCommands.RAMWR, [])
+}
+
+// Low-Level: kompletten Daten-Buffer schicken (DC/CS korrekt setzen)
+function writeDataBuffer(buf: Buffer) {
+    pins.digitalWritePin(TFTDC, 1) // Daten
+    pins.digitalWritePin(TFTCS, 0) // aktiv
+    pins.spiWriteBuffer(buf)
+    pins.digitalWritePin(TFTCS, 1) // inaktiv
 }
 
 //% blockId=st7789_fillrect_fast block="Fülle Rechteck x %x y %y w %w h %h | Farbe %color"
