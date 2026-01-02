@@ -5,7 +5,7 @@
         "core": "*",
         "radio": "*",
         "microphone": "*",
-        "pxt-ST7789V 2.0 TFT": "github:nessiken/pxt-ST7789V-2_0-TFT#a27f7e3b54721ae7785247d0f19dfcb60cde4df3"
+        "pxt-ST7789V 2.0 TFT": "github:masta-nksa/pxt-ST7789V-2_0-TFT#master""
     },
     "files": [
         "main.blocks",
