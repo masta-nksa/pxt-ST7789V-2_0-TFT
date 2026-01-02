@@ -339,7 +339,14 @@ function setWindow(x: number, y: number, w: number, h: number) {
 function writeDataBuffer(buf: Buffer) {
     pins.digitalWritePin(TFTDC[0], 1) // Daten
     pins.digitalWritePin(TFTCS[0], 0) // aktiv
-    pins.spiWriteBuffer(buf)
+    
+    // --- Buffer byteweise senden ---
+    for (let i = 0; i < buf.length; i++) {
+        // Sicherer Zugriff per getNumber (UInt8 little-endian):
+        const b = buf.getNumber(NumberFormat.UInt8LE, i)
+        pins.spiWrite(b)
+    }
+
     pins.digitalWritePin(TFTCS[0], 1) // inaktiv
 }
 
