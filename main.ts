@@ -337,10 +337,10 @@ function setWindow(x: number, y: number, w: number, h: number) {
 
 // Low-Level: kompletten Daten-Buffer schicken (DC/CS korrekt setzen)
 function writeDataBuffer(buf: Buffer) {
-    pins.digitalWritePin(TFTDC, 1) // Daten
-    pins.digitalWritePin(TFTCS, 0) // aktiv
+    pins.digitalWritePin(TFTDC[0], 1) // Daten
+    pins.digitalWritePin(TFTCS[0], 0) // aktiv
     pins.spiWriteBuffer(buf)
-    pins.digitalWritePin(TFTCS, 1) // inaktiv
+    pins.digitalWritePin(TFTCS[0], 1) // inaktiv
 }
 
 //% blockId=st7789_fillrect_fast block="Fülle Rechteck x %x y %y w %w h %h | Farbe %color"
