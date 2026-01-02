@@ -92,6 +92,73 @@ namespace OLEDST7789 {
         // MADCTL_MH = 0x04 Display Data Latch Order    
     }// END TFT ST7789V Commands
 
+// --- Farbordnung & Ausrichtung ---
+export enum ColorOrder { RGB = 0x00, BGR = 0x08 }
+
+// Für Querformat zwei Varianten (je nach Panel-Lage)
+export enum Orientation {
+    //% block="Hochformat"
+    Portrait = 0,
+    //% block="Querformat 90°"
+    Landscape90 = 1,
+    //% block="Querformat 270°"
+    Landscape270 = 2
+}
+
+// Aktueller MADCTL-Wert (Default: Portrait, MY=0x80 → y wächst nach unten, RGB)
+let currentMADCTL = 0x80 | ColorOrder.RGB
+
+// Panel-Basis (dein 2.0" ST7789V)
+let TFTWIDTH  = 240
+let TFTHEIGHT = 320
+let X_OFFSET  = 0
+let Y_OFFSET  = 0
+
+function applyOrientation(ori: Orientation, order: ColorOrder) {
+    switch (ori) {
+        case Orientation.Portrait:
+            currentMADCTL = 0x80 | order           // MY (y nach unten)
+            TFTWIDTH = 240; TFTHEIGHT = 320
+            X_OFFSET = 0;  Y_OFFSET = 0
+            break
+
+        case Orientation.Landscape90:
+            // Je nach Modul evtl. 0x60 (MX|MV) statt 0x20 (MV) für „saubere“ Top-Left
+            currentMADCTL = 0x20 | order           // MV (Rotation 90°)
+            // currentMADCTL = 0x60 | order       // Alternative: MX|MV
+            TFTWIDTH = 320; TFTHEIGHT = 240
+            X_OFFSET = 0;  Y_OFFSET = 0
+            break
+
+        case Orientation.Landscape270:
+            currentMADCTL = 0xE0 | order           // MX|MY|MV (Rotation 270°)
+            TFTWIDTH = 320; TFTHEIGHT = 240
+            X_OFFSET = 0;  Y_OFFSET = 0
+            break
+    }
+    // MADCTL ins Display schreiben
+    send(TFTCommands.MADCTL, [currentMADCTL & 0xFF])
+}
+
+//% blockId=st7789_set_spi block="ST7789 SPI-Frequenz (Hz) %hz"
+//% weight=5 group="Setup"
+export function setSpiFrequency(hz: number) {
+    pins.spiFrequency(hz)
+}
+
+//% blockId=st7789_rgb block="RGB r %r g %g b %b"
+//% r.min=0 r.max=255 g.min=0 g.max=255 b.min=0 b.max=255
+//% r.defl=255 g.defl=255 b.defl=255
+//% weight=95 group="Farben"
+export function rgb(r: number, g: number, b: number): number {
+    r = Math.max(0, Math.min(255, r))
+    g = Math.max(0, Math.min(255, g))
+    b = Math.max(0, Math.min(255, b))
+    return ((r & 0xF8) << 8) | ((g & 0xFC) << 3) | (b >> 3)
+}
+
+
+   
     //---------------------------------------------------------------------------------------------------------------------
     // Unicode representation   FONTS
     // The unicode table is split into seven parts because of 
@@ -139,7 +206,7 @@ namespace OLEDST7789 {
     //-------------------------------------------------------------------------------------------------------------------
     //       Set pixel address window - minimum and maximum pixel bounds
     //-------------------------------------------------------------------------------------------------------------------
-    function setWindow(x0: number, y0: number, x1: number, y1: number): void {
+    function setWindowBounds(x0: number, y0: number, x1: number, y1: number): void {
 
         send(TFTCommands.CASET, [x0 >> 8, x0 & 0xFF, x1 >> 8, x1 & 0xFF]) // Colum setup   ↓
         send(TFTCommands.RASET, [y0 >> 8, y0 & 0xFF, y1 >> 8, y1 & 0xFF]) // Row Setup              ->
@@ -200,6 +267,143 @@ namespace OLEDST7789 {
 
         clearScreen(color)
     }// ENDInitial TFT setup
+   
+//% blockId=st7789_init_ex
+//% block="ST7789 initialisieren | Hintergrund %bg | Ausrichtung %ori | Farbordnung %order | SPI %spiMHz MHz"
+//% bg.shadow="st7789_rgb"
+//% ori.defl=Orientation.Portrait
+//% order.defl=ColorOrder.RGB
+//% spiMHz.defl=12
+//% weight=100 group="Setup"
+export function initExRGB(
+    bg: number,
+    ori: Orientation = Orientation.Portrait,
+    order: ColorOrder = ColorOrder.RGB,
+    spiMHz: number = 12
+): void {
+    // moderat starten; später erhöhen (24–40 MHz nur bei kurzen, sauberen Leitungen)
+    setSpiFrequency(spiMHz * 1000000)
+
+    // 1) Software-Reset + Aufwecken (einmal)
+    send(TFTCommands.SWRESET, []); basic.pause(120)
+    send(TFTCommands.SLPOUT,  []); basic.pause(120)
+
+    // 2) 16-bit/pixel (RGB565)
+    send(TFTCommands.COLMOD, [0x05]); basic.pause(10)
+
+    // 3) Ausrichtung / Farbordnung
+    applyOrientation(ori, order)
+
+    // 4) Volle Fläche als Standardfenster
+    send(TFTCommands.CASET, [
+        (X_OFFSET >> 8) & 0xFF, X_OFFSET & 0xFF,
+        ((X_OFFSET + TFTWIDTH - 1) >> 8) & 0xFF, (X_OFFSET + TFTWIDTH - 1) & 0xFF
+    ])
+    send(TFTCommands.RASET, [
+        (Y_OFFSET >> 8) & 0xFF, Y_OFFSET & 0xFF,
+        ((Y_OFFSET + TFTHEIGHT - 1) >> 8) & 0xFF, (Y_OFFSET + TFTHEIGHT - 1) & 0xFF
+    ])
+
+    // 5) (optional) Inversion ON – viele ST7789-Panels sehen damit korrekt aus
+    send(TFTCommands.INVON, []); basic.pause(10)
+
+    // 6) Normal an + Display an
+    send(TFTCommands.NORON, []); basic.pause(10)
+    send(TFTCommands.DISPON, []); basic.pause(10)
+
+    clearScreen(bg)
+}
+
+//% blockId=st7789_init_ex
+//% block="ST7789 initialisieren | Hintergrund %bg | Ausrichtung %ori | Farbordnung %order | SPI %spiMHz MHz"
+//% bg.shadow="st7789_rgb"
+//% ori.defl=Orientation.Portrait
+//% order.defl=ColorOrder.RGB
+//% spiMHz.defl=12
+//% weight=100 group="Setup"
+export function initExRGB(
+    bg: number,
+    ori: Orientation = Orientation.Portrait,
+    order: ColorOrder = ColorOrder.RGB,
+    spiMHz: number = 12
+): void {
+    // moderat starten; später erhöhen (24–40 MHz nur bei kurzen, sauberen Leitungen)
+    setSpiFrequency(spiMHz * 1000000)
+
+    // 1) Software-Reset + Aufwecken (einmal)
+    send(TFTCommands.SWRESET, []); basic.pause(120)
+    send(TFTCommands.SLPOUT,  []); basic.pause(120)
+
+    // 2) 16-bit/pixel (RGB565)
+    send(TFTCommands.COLMOD, [0x05]); basic.pause(10)
+
+    // 3) Ausrichtung / Farbordnung
+    applyOrientation(ori, order)
+
+    // 4) Volle Fläche als Standardfenster
+    send(TFTCommands.CASET, [
+        (X_OFFSET >> 8) & 0xFF, X_OFFSET & 0xFF,
+        ((X_OFFSET + TFTWIDTH - 1) >> 8) & 0xFF, (X_OFFSET + TFTWIDTH - 1) & 0xFF
+    ])
+    send(TFTCommands.RASET, [
+        (Y_OFFSET >> 8) & 0xFF, Y_OFFSET & 0xFF,
+        ((Y_OFFSET + TFTHEIGHT - 1) >> 8) & 0xFF, (Y_OFFSET + TFTHEIGHT - 1) & 0xFF
+    ])
+
+    // 5) (optional) Inversion ON – viele ST7789-Panels sehen damit korrekt aus
+    send(TFTCommands.INVON, []); basic.pause(10)
+
+    // 6) Normal an + Display an
+    send(TFTCommands.NORON, []); basic.pause(10)
+    send(TFTCommands.DISPON, []); basic.pause(10)
+
+    clearScreen(bg)
+}
+
+function setWindow(x: number, y: number, w: number, h: number) {
+    // Column
+    send(TFTCommands.CASET, [
+        ((x + X_OFFSET) >> 8) & 0xFF, (x + X_OFFSET) & 0xFF,
+        ((x + X_OFFSET + w - 1) >> 8) & 0xFF, (x + X_OFFSET + w - 1) & 0xFF
+    ])
+    // Row
+    send(TFTCommands.RASET, [
+        ((y + Y_OFFSET) >> 8) & 0xFF, (y + Y_OFFSET) & 0xFF,
+        ((y + Y_OFFSET + h - 1) >> 8) & 0xFF, (y + Y_OFFSET + h - 1) & 0xFF
+    ])
+    // Datenphase starten
+   send(TFTCommands.RAMWR, [])
+}
+
+//% blockId=st7789_fillrect_fast block="Fülle Rechteck x %x y %y w %w h %h | Farbe %color"
+//% color.shadow="st7789_rgb"
+//% weight=90 group="Zeichnen"
+export function fillRectFast(x: number, y: number, w: number, h: number, color: number) {
+    if (w <= 0 || h <= 0 || x < 0 || y < 0 || x + w > TFTWIDTH || y + h > TFTHEIGHT) return
+    setWindow(x, y, w, h)
+
+    const hi = (color >> 8) & 0xFF
+    const lo =  color       & 0xFF
+
+    // Zeilen-Puffer (Burst je Zeile)
+    const line = pins.createBuffer(w * 2) // MakeCode: createBuffer(...) verwenden! [3](https://www.instructables.com/The-Arduino-TFT-LCD-Connection/)
+    for (let i = 0; i < w; i++) {
+        line[i * 2]     = hi
+        line[i * 2 + 1] = lo
+    }
+    for (let r = 0; r < h; r++) {
+        writeDataBuffer(line)             // RAMWR-Burst (massiv schneller) [1](https://github.com/nessiken/pxt-ST7789V-2_0-TFT/blob/master/README.md?plain=1)
+    }
+}
+
+//% blockId=st7789_draw_bitmap block="Zeichne Bitmap x %x y %y w %w h %h | Daten %data"
+//% weight=80 group="Zeichnen"
+export function drawBitmap565(x: number, y: number, w: number, h: number, data: Buffer) {
+    if (w <= 0 || h <= 0 || x < 0 || y < 0 || x + w > TFTWIDTH || y + h > TFTHEIGHT) return
+    if (data.length != w * h * 2) return
+    setWindow(x, y, w, h)
+    writeDataBuffer(data)                 // kompletter Block in einem Rutsch (Burst) [1](https://github.com/nessiken/pxt-ST7789V-2_0-TFT/blob/master/README.md?plain=1)
+}
 
     //---------------------------------------------------------------------------------------------------------------------     
     //                      Draw single pixel
