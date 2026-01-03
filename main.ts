@@ -131,7 +131,7 @@ const Y_SHIFT = [0, 0, 0, 0]
 function spiInitFast() {
     pins.spiPins(MOSI_PIN, MISO_PIN, SCK_PIN)
     pins.spiFormat(8, 0)            // 8 Bit, SPI Mode 0 (schneller & kompatibel)
-    pins.spiFrequency(8_000_000)    // 8 MHz – bei Bedarf 4..12 MHz testen
+    pins.spiFrequency(8000000)    // 8 MHz – bei Bedarf 4..12 MHz testen
     pins.digitalWritePin(DC_PIN, 1)
     pins.digitalWritePin(CS_PIN, 1)
 }
