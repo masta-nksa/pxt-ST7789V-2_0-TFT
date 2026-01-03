@@ -111,6 +111,131 @@ export enum Orientation {
 // Aktueller MADCTL-Wert (Default: Portrait, MY=0x80 → y wächst nach unten, RGB)
 let currentMADCTL = 0x80 | ColorOrder.RGB
 
+// ===== Pins: angepasst an masta-nksa/microbit-ST7789 =====
+// DC = P1, CS = P16, SCK = P13, MOSI = P15, MISO (unbenutzt) = P14
+const DC_PIN = DigitalPin.P1
+const CS_PIN = DigitalPin.P16
+const SCK_PIN = DigitalPin.P13
+const MOSI_PIN = DigitalPin.P15
+const MISO_PIN = DigitalPin.P14
+
+// ===== Displaygröße: 240x320 (2.0" GMT020-01) =====
+const TFT_W = 240
+const TFT_H = 320
+
+// Optional: Offsets je Rotation (bei Landscape-Versatz anpassen)
+const X_SHIFT = [0, 0, 0, 0]
+const Y_SHIFT = [0, 0, 0, 0]
+
+// ---- Low-level SPI helpers ----
+function spiInitFast() {
+    pins.spiPins(MOSI_PIN, MISO_PIN, SCK_PIN)
+    pins.spiFormat(8, 0)            // 8 Bit, SPI Mode 0 (schneller & kompatibel)
+    pins.spiFrequency(8_000_000)    // 8 MHz – bei Bedarf 4..12 MHz testen
+    pins.digitalWritePin(DC_PIN, 1)
+    pins.digitalWritePin(CS_PIN, 1)
+}
+
+function writeCmd(cmd: number) {
+    pins.digitalWritePin(CS_PIN, 0)
+    pins.digitalWritePin(DC_PIN, 0)
+    pins.spiWrite(cmd & 0xFF)
+    pins.digitalWritePin(CS_PIN, 1)
+}
+
+function writeDataByte(b: number) {
+    pins.digitalWritePin(CS_PIN, 0)
+    pins.digitalWritePin(DC_PIN, 1)
+    pins.spiWrite(b & 0xFF)
+    pins.digitalWritePin(CS_PIN, 1)
+}
+
+function writeDataBytes(buf: Buffer) {
+    pins.digitalWritePin(CS_PIN, 0)
+    pins.digitalWritePin(DC_PIN, 1)
+    for (let i = 0; i < buf.length; i++) pins.spiWrite(buf[i])
+    pins.digitalWritePin(CS_PIN, 1)
+}
+
+function setAddrWindowRaw(x0: number, y0: number, x1: number, y1: number) {
+    // CASET
+    writeCmd(0x2A)
+    const ca = pins.createBuffer(4)
+    ca[0] = (x0 >> 8) & 0xFF; ca[1] = x0 & 0xFF
+    ca[2] = (x1 >> 8) & 0xFF; ca[3] = x1 & 0xFF
+    writeDataBytes(ca)
+    // RASET
+    writeCmd(0x2B)
+    const ra = pins.createBuffer(4)
+    ra[0] = (y0 >> 8) & 0xFF; ra[1] = y0 & 0xFF
+    ra[2] = (y1 >> 8) & 0xFF; ra[3] = y1 & 0xFF
+    writeDataBytes(ra)
+}
+
+// Falls du eine Rotation-Funktion hast, rufe sie vorher auf.
+// Hier eine kompakte Variante:
+function setRotation(rot: number) {
+    // MADCTL
+    writeCmd(0x36)
+    const MX = 0x40, MY = 0x80, MV = 0x20, RGB = 0x00
+    let v = RGB
+    if (rot === 0) v = MX | MY | RGB
+    else if (rot === 1) v = MY | MV | RGB
+    else if (rot === 2) v = RGB
+    else if (rot === 3) v = MX | MV | RGB
+    writeDataByte(v)
+}
+
+// ======== Beschleunigte Initialisierung + Vollflächen-Füllung ========
+export function initExRGB(color565: number) {
+    spiInitFast()
+
+    // Kein Hardware-Reset (RST liegt auf 3V). Software-Reset nutzen:
+    writeCmd(0x01)                       // SWRESET
+    basic.pause(150)
+
+    writeCmd(0x11)                       // SLPOUT
+    basic.pause(120)
+
+    // 16-bit Farbformat RGB565
+    writeCmd(0x3A)                       // COLMOD
+    writeDataByte(0x55)
+
+    // Optionale Display-Inversion je nach Panel
+    // writeCmd(0x21)                    // INVON (falls dein Panel das erwartet)
+
+    // Rotation 0 (Portrait) – bei Bedarf anpassen:
+    setRotation(0)
+
+    // Vollbild-Fenster setzen
+    const rot = 0
+    const xs = X_SHIFT[rot], ys = Y_SHIFT[rot]
+    setAddrWindowRaw(0 + xs, 0 + ys, (TFT_W - 1) + xs, (TFT_H - 1) + ys)
+
+    // RAMWR starten und in einem großen Burst füllen
+    writeCmd(0x2C)                       // RAMWR
+
+    const BYTES_TOTAL = TFT_W * TFT_H * 2
+    const CHUNK = 1024                   // 1 KB-Block (512 Pixel)
+    const buf = pins.createBuffer(CHUNK)
+    const hi = (color565 >> 8) & 0xFF
+    const lo = color565 & 0xFF
+    for (let i = 0; i < CHUNK; i += 2) {
+        buf[i] = hi; buf[i + 1] = lo
+    }
+
+    // CS/DC konstant lassen => sehr wenig Overhead
+    pins.digitalWritePin(CS_PIN, 0)
+    pins.digitalWritePin(DC_PIN, 1)
+    let remaining = BYTES_TOTAL
+    while (remaining > 0) {
+        const n = remaining > CHUNK ? CHUNK : remaining
+        for (let i = 0; i < n; i++) pins.spiWrite(buf[i])
+        remaining -= n
+    }
+    pins.digitalWritePin(CS_PIN, 1)
+}
+
 function applyOrientation(ori: Orientation, order: ColorOrder) {
     switch (ori) {
         case Orientation.Portrait:
